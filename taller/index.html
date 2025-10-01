@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Envío de Mensajes</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .progress-bar {
+      width: 100%; background: #eee; border-radius: 5px;
+      margin-top: 10px; height: 25px; position: relative;
+    }
+    .progress {
+      height: 100%; width: 0%; background: #4caf50; 
+      border-radius: 5px; text-align: center; 
+      color: white; line-height: 25px;
+    }
+  </style>
+</head>
+<body>
+  <h2>📤 Subir archivo Excel</h2>
+  <input type="file" id="fileInput" />
+  <button onclick="uploadFile()">Subir</button>
+
+  <h3>📋 Vista previa</h3>
+  <pre id="preview">No hay datos aún</pre>
+
+  <h3>📤 Progreso de Envío</h3>
+  <div class="progress-bar">
+    <div id="progress" class="progress">0%</div>
+  </div>
+  <p id="status"></p>
+
+  <script>
+    let numbers = [];
+
+    async function uploadFile() {
+      const fileInput = document.getElementById("fileInput").files[0];
+      if (!fileInput) return alert("Selecciona un archivo primero");
+
+      const formData = new FormData();
+      formData.append("file", fileInput);
+
+      const res = await fetch("http://127.0.0.1:8000/upload-excel/", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        alert("Error: " + data.error);
+        return;
+      }
+
+      numbers = data.numbers;
+      document.getElementById("preview").innerText =
+        JSON.stringify(data.preview, null, 2);
+
+      // Inicia el envío después de cargar
+      sendInChunks(numbers, 500); // 500 por lote
+    }
+
+    async function sendInChunks(numbers, chunkSize) {
+      const total = numbers.length;
+      const totalBatches = Math.ceil(total / chunkSize);
+      let progressBar = document.getElementById("progress");
+      let status = document.getElementById("status");
+
+      for (let i = 0; i < total; i += chunkSize) {
+        const chunk = numbers.slice(i, i + chunkSize);
+
+        // Enviar lote al backend
+        await fetch("http://127.0.0.1:8000/send-messages/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ numbers: chunk })
+        });
+
+        // Actualizar progreso
+        const batch = Math.floor(i / chunkSize) + 1;
+        const percent = Math.round((batch / totalBatches) * 100);
+        progressBar.style.width = percent + "%";
+        progressBar.innerText = percent + "%";
+        status.innerText = `✅ Lote ${batch} de ${totalBatches} enviado (${chunk.length} números)`;
+      }
+
+      status.innerText = `🎉 Todos los ${total} mensajes enviados en ${totalBatches} lotes.`;
+    }
+  </script>
+</body>
+</html>

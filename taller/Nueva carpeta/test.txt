@@ -1,0 +1,66 @@
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+import io
+
+app = FastAPI()
+
+# Middleware CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.post("/upload-excel/")
+async def upload_excel(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+
+        # Leer desde la fila 12 (row index 11 = skiprows=11)
+        df = pd.read_excel(io.BytesIO(contents), header=None, skiprows=11)
+
+        # Definir nombres de columnas manualmente
+        df.columns = [
+            "ID", "Razón Social", "Última Orden de Servicio", 
+            "Recorrido Promedio Mensual", "Celular", "Extra1", "Vehículo",
+            "Nivel", "Días Restantes", "Días Último Servicio", "Fecha Servicio/Revisión"
+        ]
+
+        # Seleccionar solo las columnas necesarias
+        df = df[[
+            "ID", "Razón Social", "Última Orden de Servicio", 
+            "Recorrido Promedio Mensual", "Celular", "Vehículo",
+            "Nivel", "Días Restantes", "Días Último Servicio", "Fecha Servicio/Revisión"
+        ]]
+
+        # Quitar filas sin celular
+        df = df.dropna(subset=["Celular"])
+
+        # Convertir a string y limpiar espacios
+        df["Celular"] = df["Celular"].astype(str).str.strip()
+
+        # Vista previa (primeras 10 filas)
+        preview = df.head(10).to_dict(orient="records")
+
+        # Lista completa de números
+        numbers = df["Celular"].tolist()
+
+        return {
+            "filename": file.filename,
+            "rows": len(df),
+            "columns": list(df.columns),
+            "preview": preview,
+            "numbers": numbers[:50]  # mostramos solo los primeros 50
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/send-messages/")
+async def send_messages(data: dict):
+    numbers = data.get("numbers", [])
+    return {"message": f"Se enviaron mensajes a {len(numbers)} números"}
